@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>德文單字學習卡 App</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons 精美圖示庫 -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Inter 字體 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        /* 自訂捲軸美化 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 9999px;
+        }
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+        }
+        .speaking-active {
+            animation: pulse-ring 1.2s infinite;
+            background-color: #4f46e5 !important;
+            color: #ffffff !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col justify-between p-4 sm:p-6 md:p-8 select-none">
+
+    <!-- 頂部導覽與匯入 CSV 區塊 (與卡片介面分開) -->
+    <header class="w-full max-w-2xl mx-auto flex items-center justify-between bg-white px-5 py-3.5 rounded-2xl shadow-sm border border-slate-200/80 mb-6">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm">
+                <i class="ph-fill ph-cards text-xl"></i>
+            </div>
+            <h1 class="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">德文單字學習卡</h1>
+        </div>
+        
+        <div>
+            <label for="csvFileInput" class="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 font-medium text-sm transition-colors border border-slate-200/60">
+                <i class="ph ph-upload-simple text-lg"></i>
+                <span>匯入 CSV</span>
+            </label>
+            <input type="file" id="csvFileInput" accept=".csv" class="hidden">
+        </div>
+    </header>
+
+    <!-- 主要學習區域 -->
+    <main class="w-full max-w-2xl mx-auto flex-1 flex flex-col justify-center relative">
+        
+        <!-- 卡片上方進度條 -->
+        <div id="progressContainer" class="mb-4 px-1">
+            <div class="flex justify-between items-end mb-2 text-xs font-semibold text-slate-500">
+                <div class="flex flex-col gap-1.5">
+                    <span id="progressCount" class="flex items-center gap-1.5 text-slate-700 font-bold text-sm">
+                        <i class="ph-fill ph-stack text-indigo-500"></i>
+                        <span>剩餘: 0 / 0</span>
+                    </span>
+                    <span id="statsCount" class="flex items-center gap-2.5 text-[10px] sm:text-xs">
+                        <span class="text-rose-500 flex items-center gap-0.5"><i class="ph-fill ph-x-circle"></i> Again: <span id="statAgain">0</span></span>
+                        <span class="text-amber-500 flex items-center gap-0.5"><i class="ph-fill ph-warning-circle"></i> Hard: <span id="statHard">0</span></span>
+                        <span class="text-emerald-500 flex items-center gap-0.5"><i class="ph-fill ph-check-circle"></i> Good: <span id="statGood">0</span></span>
+                        <span class="text-sky-500 flex items-center gap-0.5"><i class="ph-fill ph-star"></i> Easy: <span id="statEasy">0</span></span>
+                    </span>
+                </div>
+                <span id="progressPercent" class="text-indigo-600 font-bold text-sm">0%</span>
+            </div>
+            <div class="w-full bg-slate-200/90 h-2.5 rounded-full overflow-hidden shadow-inner">
+                <div id="progressBar" class="bg-indigo-600 h-full rounded-full transition-all duration-300 ease-out" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <!-- 獨立單字卡片容器 -->
+        <div id="flashcard" class="bg-white rounded-3xl shadow-xl border border-slate-200/90 min-h-[380px] sm:min-h-[430px] flex flex-col justify-between p-6 sm:p-10 transition-all duration-200 relative cursor-pointer hover:shadow-2xl">
+            
+            <!-- 卡片頂部面狀態標示 -->
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <span id="cardSideBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600">
+                    <i class="ph-fill ph-Translate"></i>
+                    <span>正面 · 德文單字</span>
+                </span>
+                <span class="text-xs text-slate-400 flex items-center gap-1">
+                    <i class="ph ph-hand-tap text-sm"></i> 點擊卡片翻面
+                </span>
+            </div>
+
+            <!-- 正面內容：大字顯示 CSV 第一欄單字 + 旁邊喇叭圖示 -->
+            <div id="cardFront" class="my-auto py-8 flex items-center justify-center">
+                <div class="flex items-center justify-center gap-4 flex-wrap text-center">
+                    <h2 id="frontWordText" class="text-3xl sm:text-5xl font-bold text-slate-900 tracking-tight leading-tight break-words">
+                        das Bioprodukt
+                    </h2>
+                    <button id="frontSpeakerBtn" type="button" title="朗讀單字 (或按 Enter 鍵)" class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center transition-all shadow-sm active:scale-95 shrink-0">
+                        <i class="ph-fill ph-speaker-high text-2xl sm:text-3xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 背面內容：依序分行顯示 CSV 第二欄內容 (詞性、中文翻譯、詞性變化、搭配詞、例句 + 旁邊喇叭圖示) -->
+            <div id="cardBack" class="hidden my-auto py-4 flex-col gap-3 max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
+                <!-- 由 JavaScript 動態填入分行內容 -->
+            </div>
+
+            <!-- 卡片底部提示 -->
+            <div class="pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-400">
+                <span class="flex items-center gap-1">
+                    <i class="ph ph-keyboard text-sm"></i> 按 <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-600 font-sans">Enter</kbd> 朗讀語音
+                </span>
+                <span id="voiceStatusText" class="text-indigo-500 font-medium flex items-center gap-1">
+                    <i class="ph-fill ph-waveform"></i> 高地德文 (de-DE)
+                </span>
+            </div>
+        </div>
+
+        <!-- 結算畫面 (預設隱藏) -->
+        <div id="completionScreen" class="hidden bg-white rounded-3xl shadow-xl border border-slate-200/90 min-h-[380px] sm:min-h-[430px] flex-col items-center justify-center p-6 sm:p-10 text-center relative z-10">
+            <div class="w-24 h-24 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                <i id="completionIcon" class="ph-fill ph-check-circle text-5xl"></i>
+            </div>
+            <h2 id="completionTitle" class="text-3xl font-bold text-slate-800 mb-3">完成練習！</h2>
+            <p id="completionDesc" class="text-slate-500 mb-8 max-w-sm">您已經完成了本次所有的單字複習，幹得好！</p>
+            
+            <div id="completionStats" class="flex flex-wrap justify-center gap-3 mb-8 text-sm">
+                <div class="px-3.5 py-2 bg-rose-50 text-rose-600 rounded-xl font-medium flex items-center gap-1"><i class="ph-fill ph-x-circle"></i> Again: <span id="finalAgain">0</span></div>
+                <div class="px-3.5 py-2 bg-amber-50 text-amber-600 rounded-xl font-medium flex items-center gap-1"><i class="ph-fill ph-warning-circle"></i> Hard: <span id="finalHard">0</span></div>
+                <div class="px-3.5 py-2 bg-emerald-50 text-emerald-600 rounded-xl font-medium flex items-center gap-1"><i class="ph-fill ph-check-circle"></i> Good: <span id="finalGood">0</span></div>
+                <div class="px-3.5 py-2 bg-sky-50 text-sky-600 rounded-xl font-medium flex items-center gap-1"><i class="ph-fill ph-star"></i> Easy: <span id="finalEasy">0</span></div>
+            </div>
+
+            <button id="restartBtn" onclick="resetSession()" class="flex items-center justify-center gap-2 px-8 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md shadow-indigo-200 transition-all active:scale-95 w-full max-w-xs mx-auto">
+                <i class="ph-bold ph-arrow-counter-clockwise text-lg"></i>
+                <span>重新開始</span>
+            </button>
+        </div>
+
+        <!-- 卡片下方操作按鈕列 (與卡片本體分開) -->
+        <div id="controlsContainer" class="mt-6 flex items-center justify-center w-full">
+            <!-- 正面時顯示：翻轉按鈕 -->
+            <button id="flipBtn" type="button" class="flex items-center justify-center gap-2 px-8 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md shadow-indigo-200 transition-all active:scale-95 w-full max-w-sm mx-auto text-lg">
+                <i class="ph-bold ph-arrows-clockwise text-xl"></i>
+                <span>顯示答案</span>
+            </button>
+
+            <!-- 背面時顯示：SRS 按鈕 -->
+            <div id="srsControls" class="hidden w-full flex-wrap sm:flex-nowrap gap-2 sm:gap-3">
+                <button onclick="handleSRS('again')" class="flex-1 min-w-[70px] flex flex-col items-center justify-center gap-1 py-2.5 sm:py-3 rounded-2xl bg-white hover:bg-rose-50 text-rose-600 font-bold shadow-sm border-2 border-rose-100 hover:border-rose-300 transition-all active:scale-95">
+                    <span class="text-sm sm:text-base">Again</span>
+                    <span class="text-[10px] sm:text-xs font-normal text-rose-400">第2位</span>
+                </button>
+                <button onclick="handleSRS('hard')" class="flex-1 min-w-[70px] flex flex-col items-center justify-center gap-1 py-2.5 sm:py-3 rounded-2xl bg-white hover:bg-amber-50 text-amber-600 font-bold shadow-sm border-2 border-amber-100 hover:border-amber-300 transition-all active:scale-95">
+                    <span class="text-sm sm:text-base">Hard</span>
+                    <span class="text-[10px] sm:text-xs font-normal text-amber-400">中間</span>
+                </button>
+                <button onclick="handleSRS('good')" class="flex-1 min-w-[70px] flex flex-col items-center justify-center gap-1 py-2.5 sm:py-3 rounded-2xl bg-white hover:bg-emerald-50 text-emerald-600 font-bold shadow-sm border-2 border-emerald-100 hover:border-emerald-300 transition-all active:scale-95">
+                    <span class="text-sm sm:text-base">Good</span>
+                    <span class="text-[10px] sm:text-xs font-normal text-emerald-400">末端</span>
+                </button>
+                <button onclick="handleSRS('easy')" class="flex-1 min-w-[70px] flex flex-col items-center justify-center gap-1 py-2.5 sm:py-3 rounded-2xl bg-white hover:bg-sky-50 text-sky-600 font-bold shadow-sm border-2 border-sky-100 hover:border-sky-300 transition-all active:scale-95">
+                    <span class="text-sm sm:text-base">Easy</span>
+                    <span class="text-[10px] sm:text-xs font-normal text-sky-400">移除</span>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部留白 -->
+    <footer class="h-4"></footer>
+
+    <script>
+        // 應用程式狀態 (導入 SRS 間隔重複邏輯)
+        let originalCards = [];
+        let queue = [];
+        let totalCards = 0;
+        let isFront = true;
+        let stats = { again: 0, hard: 0, good: 0, easy: 0 };
+        
+        let currentAudio = null;
+        let speechRequestId = 0;
+
+        // DOM 元素
+        const flashcardEl = document.getElementById('flashcard');
+        const cardFrontEl = document.getElementById('cardFront');
+        const cardBackEl = document.getElementById('cardBack');
+        const frontWordTextEl = document.getElementById('frontWordText');
+        const frontSpeakerBtn = document.getElementById('frontSpeakerBtn');
+        const cardSideBadgeEl = document.getElementById('cardSideBadge');
+        const progressCountEl = document.getElementById('progressCount');
+        const progressPercentEl = document.getElementById('progressPercent');
+        const progressBarEl = document.getElementById('progressBar');
+        const flipBtn = document.getElementById('flipBtn');
+        const srsControls = document.getElementById('srsControls');
+        const csvFileInput = document.getElementById('csvFileInput');
+
+        /**
+         * 解析 CSV 字串（支援引號內換行與逗號，自動略過標題列）
+         */
+        function parseCSV(text) {
+            const rows = [];
+            let currentRow = [];
+            let currentCell = '';
+            let inQuotes = false;
+
+            // 移除開頭可能存在的 BOM
+            const cleanText = text.replace(/^\uFEFF/, '');
+
+            for (let i = 0; i < cleanText.length; i++) {
+                const char = cleanText[i];
+                const nextChar = cleanText[i + 1];
+
+                if (inQuotes) {
+                    if (char === '"' && nextChar === '"') {
+                        currentCell += '"';
+                        i++; // 跳過下一個引號
+                    } else if (char === '"') {
+                        inQuotes = false;
+                    } else {
+                        currentCell += char;
+                    }
+                } else {
+                    if (char === '"') {
+                        inQuotes = true;
+                    } else if (char === ',') {
+                        currentRow.push(currentCell);
+                        currentCell = '';
+                    } else if (char === '\r' && nextChar === '\n') {
+                        currentRow.push(currentCell);
+                        rows.push(currentRow);
+                        currentRow = [];
+                        currentCell = '';
+                        i++;
+                    } else if (char === '\n' || char === '\r') {
+                        currentRow.push(currentCell);
+                        rows.push(currentRow);
+                        currentRow = [];
+                        currentCell = '';
+                    } else {
+                        currentCell += char;
+                    }
+                }
+            }
+
+            if (currentCell !== '' || currentRow.length > 0) {
+                currentRow.push(currentCell);
+                rows.push(currentRow);
+            }
+
+            // 【重要】移除第一行 (標題列)
+            if (rows.length > 0) {
+                rows.shift();
+            }
+
+            return rows.map(row => {
+                const front = (row[0] || '').trim();
+                const backRaw = (row[1] || '').trim();
+                
+                // 寬鬆處理各種換行符號
+                const rawLines = backRaw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+                
+                // --- 全新邏輯：將標題與內容合併，避免跳行 ---
+                const blocks = [];
+                let currentBlock = { type: 'main', lines: [] };
+
+                rawLines.forEach(line => {
+                    // 偵測是否為 【變化】、【搭配】、【例句】 等標題格式
+                    const match = line.match(/^【(.*?)】(.*)$/);
+                    if (match) {
+                        // 儲存前一個區塊
+                        if (currentBlock.lines.length > 0) {
+                            blocks.push(currentBlock);
+                        }
+                        const title = match[1];
+                        const content = match[2].trim();
+                        
+                        let type = 'main';
+                        if (title.includes('變化') || title.includes('三態')) type = 'variation';
+                        else if (title.includes('搭配')) type = 'collocation';
+                        else if (title.includes('例句')) type = 'example';
+                        
+                        // 建立新區塊，若同一行有內容則一併加入
+                        currentBlock = { type, title, lines: content ? [content] : [] };
+                    } else {
+                        currentBlock.lines.push(line);
+                    }
+                });
+                // 推入最後一個區塊
+                if (currentBlock.lines.length > 0) blocks.push(currentBlock);
+
+                const backLines = [];
+                blocks.forEach(b => {
+                    if (b.type === 'main') {
+                        // 一般內容（如單字、詞性、中文意思）保持原樣輸出
+                        b.lines.forEach(l => backLines.push(l));
+                    } else {
+                        // 針對變化、搭配、例句加入前綴
+                        let prefix = '';
+                        if (b.type === 'variation') prefix = '變化：';
+                        else if (b.type === 'collocation') prefix = '搭配：';
+                        else if (b.type === 'example') prefix = '例句：';
+                        
+                        // 將同一個分類底下的多行內容合併為單行（使用 / 隔開）
+                        const content = b.lines.join(' / ');
+                        if (content) {
+                            backLines.push(`${prefix}${content}`);
+                        }
+                    }
+                });
+
+                // 擷取例句中的純德文句子以供語音發音
+                let exampleGerman = '';
+                const exampleLine = backLines.find(line => line.includes('例句'));
+                if (exampleLine) {
+                    // 移除前面的 "例句：" 以及所有括號內的中文
+                    let exLine = exampleLine.replace(/^.*?例句[：:\s】]*/, '');
+                    exampleGerman = exLine.replace(/[\(（].*?[\)）]/g, '').trim();
+                }
+                // ------------------------------------------
+
+                return {
+                    front,
+                    backLines,
+                    exampleGerman
+                };
+            }).filter(item => item.front !== '');
+        }
+
+        /**
+         * 尋找本機端明確支援德文 (de-DE / de) 的語音包
+         * 嚴格過濾：名稱或語言代碼必須明確為德文，絕不使用預設英文語音
+         */
+        function getStrictLocalGermanVoice() {
+            if (!('speechSynthesis' in window)) return null;
+            const voices = window.speechSynthesis.getVoices() || [];
+            // 僅接受 lang 明確為 de 開頭的語音
+            const deVoices = voices.filter(v => {
+                const lang = (v.lang || '').replace('_', '-').toLowerCase();
+                return lang === 'de-de' || lang.startsWith('de-');
+            });
+            if (deVoices.length === 0) return null;
+
+            return deVoices.find(v => /google|microsoft|natural|anna|helena|martin|stefan|katja|conrad/i.test(v.name)) || deVoices[0];
+        }
+
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.getVoices();
+            window.speechSynthesis.onvoiceschanged = () => {
+                window.speechSynthesis.getVoices();
+            };
+        }
+
+        /**
+         * 德文單字與句子發音前處理：
+         * 1. 修正 CSV 中黏合字如 "dasInsektenhotel" -> "das Insektenhotel"
+         * 2. 將 "der/die Jugendliche" 轉為自然德文停頓 "der, die Jugendliche"，避免斜線導致語音引擎誤判
+         */
+        function formatGermanSpeechText(text) {
+            if (!text) return '';
+            let formatted = text
+                // 處理黏在一起的定冠詞與名詞，例如 dasInsektenhotel -> das Insektenhotel
+                .replace(/\b(der|die|das)([A-ZÄÖÜ])/g, '$1 $2')
+                // 處理斜線格式，例如 der/die -> der, die
+                .replace(/\s*\/\s*/g, ', ')
+                // 移除可能干擾朗讀的多餘空白
+                .replace(/\s+/g, ' ')
+                .trim();
+            return formatted;
+        }
+
+        /**
+         * 停止目前正在播放的所有語音
+         */
+        function stopAllSpeech() {
+            speechRequestId++;
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+            if (currentAudio) {
+                try {
+                    currentAudio.pause();
+                    currentAudio.src = '';
+                } catch (e) {}
+                currentAudio = null;
+            }
+            document.querySelectorAll('.speaking-active').forEach(el => el.classList.remove('speaking-active'));
+        }
+
+        /**
+         * 透過高地德文 (de-DE) 專用線上語音串流播放（使用 Blob 繞過 iframe 跨網域音訊限制）
+         */
+        async function fetchAndPlayGermanAudio(url, reqId, buttonEl) {
+            const response = await fetch(url, { referrerPolicy: 'no-referrer' });
+            if (!response.ok) throw new Error('Audio response not ok');
+            const blob = await response.blob();
+            if (blob.size < 100) throw new Error('Empty audio blob');
+
+            if (reqId !== speechRequestId) return;
+
+            const blobUrl = URL.createObjectURL(blob);
+            return new Promise((resolve, reject) => {
+                const audio = new Audio(blobUrl);
+                currentAudio = audio;
+
+                if (buttonEl) buttonEl.classList.add('speaking-active');
+
+                const cleanup = () => {
+                    if (buttonEl) buttonEl.classList.remove('speaking-active');
+                    URL.revokeObjectURL(blobUrl);
+                    if (currentAudio === audio) currentAudio = null;
+                };
+
+                audio.onended = () => {
+                    cleanup();
+                    resolve();
+                };
+
+                audio.onerror = (err) => {
+                    cleanup();
+                    reject(err);
+                };
+
+                audio.play().catch(err => {
+                    cleanup();
+                    reject(err);
+                });
+            });
+        }
+
+        /**
+         * 直接使用無 Referrer 的 Audio 標籤播放高地德文 (de-DE) 語音流
+         */
+        function playDirectGermanStream(url, reqId, buttonEl) {
+            return new Promise((resolve, reject) => {
+                if (reqId !== speechRequestId) return resolve();
+
+                const audio = new Audio();
+                audio.referrerPolicy = 'no-referrer';
+                audio.crossOrigin = 'anonymous';
+                audio.src = url;
+                currentAudio = audio;
+
+                if (buttonEl) buttonEl.classList.add('speaking-active');
+
+                const cleanup = () => {
+                    if (buttonEl) buttonEl.classList.remove('speaking-active');
+                    if (currentAudio === audio) currentAudio = null;
+                };
+
+                audio.onended = () => {
+                    cleanup();
+                    resolve();
+                };
+
+                audio.onerror = (err) => {
+                    cleanup();
+                    reject(err);
+                };
+
+                audio.play().catch(err => {
+                    cleanup();
+                    reject(err);
+                });
+            });
+        }
+
+        /**
+         * 透過 Google TTS 備援播放標準德文語音 (高穩定度)
+         */
+        function playGoogleTTS(text, reqId, buttonEl) {
+            return new Promise((resolve, reject) => {
+                if (reqId !== speechRequestId) return resolve();
+                
+                const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=de&client=tw-ob&q=${encodeURIComponent(text)}`;
+                
+                const audio = new Audio();
+                audio.crossOrigin = 'anonymous';
+                audio.src = url;
+                currentAudio = audio;
+
+                if (buttonEl) buttonEl.classList.add('speaking-active');
+
+                const cleanup = () => {
+                    if (buttonEl) buttonEl.classList.remove('speaking-active');
+                    if (currentAudio === audio) currentAudio = null;
+                };
+
+                audio.onended = () => { cleanup(); resolve(); };
+                audio.onerror = (err) => { cleanup(); reject(err); };
+                
+                audio.play().catch(err => { cleanup(); reject(err); });
+            });
+        }
+
+        /**
+         * 朗讀高地德文 (de-DE)：
+         * 結合 Godic 德語助手 API，並加入 Google 德文 TTS 作為強大備援。
+         */
+        async function speakGerman(text, buttonEl = null) {
+            if (!text) return;
+
+            stopAllSpeech();
+            const reqId = speechRequestId;
+            const cleanText = formatGermanSpeechText(text);
+            
+            // 德語助手 (godic.net) 音訊 API 規範
+            const utf8Text = unescape(encodeURIComponent(cleanText));
+            const base64Text = btoa(utf8Text);
+            const godicAudioUrl = `https://api.frdic.com/api/v2/speech/speakweb?langid=de&txt=QYN${base64Text}`;
+
+            // 1. 優先以 Fetch Blob 播放 Godic 語音
+            try {
+                await fetchAndPlayGermanAudio(godicAudioUrl, reqId, buttonEl);
+                return;
+            } catch (e) {
+                // Blob 被 CORS 阻擋，自動降級
+            }
+
+            // 2. 使用無 Referrer 的 Audio 元素直接播放 Godic
+            if (reqId === speechRequestId) {
+                try {
+                    await playDirectGermanStream(godicAudioUrl, reqId, buttonEl);
+                    return;
+                } catch (e) {
+                    // 若 Godic 失敗，自動往下嘗試
+                }
+            }
+            
+            // 3. 穩定備援：Google Translate TTS (強制為德文 de)
+            if (reqId === speechRequestId) {
+                try {
+                    await playGoogleTTS(cleanText, reqId, buttonEl);
+                    return;
+                } catch (e) {}
+            }
+
+            // 4. 終極備援：本機德文語音包 (僅限裝置確定有 de-DE 才執行，杜絕英文怪腔)
+            const localDeVoice = getStrictLocalGermanVoice();
+            if (localDeVoice && 'speechSynthesis' in window && reqId === speechRequestId) {
+                const utterance = new SpeechSynthesisUtterance(cleanText);
+                utterance.voice = localDeVoice;
+                utterance.lang = 'de-DE';
+                utterance.rate = 0.92;
+
+                if (buttonEl) {
+                    utterance.onstart = () => buttonEl.classList.add('speaking-active');
+                    utterance.onend = () => buttonEl.classList.remove('speaking-active');
+                    utterance.onerror = () => buttonEl.classList.remove('speaking-active');
+                }
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        /**
+         * 根據當前狀態朗讀（正面讀單字、背面讀例句）
+         */
+        function speakCurrentSide() {
+            if (queue.length === 0) return;
+            const currentCard = queue[0];
+
+            if (isFront) {
+                speakGerman(currentCard.front, frontSpeakerBtn);
+            } else {
+                const backSpeakerBtn = document.getElementById('backExampleSpeakerBtn');
+                const textToSpeak = currentCard.exampleGerman || currentCard.front;
+                speakGerman(textToSpeak, backSpeakerBtn);
+            }
+        }
+
+        /**
+         * 初始化/重置 SRS 會話
+         */
+        function resetSession() {
+            if (originalCards.length === 0) return;
+            queue = [...originalCards];
+            totalCards = queue.length;
+            stats = { again: 0, hard: 0, good: 0, easy: 0 };
+            isFront = true;
+            
+            document.getElementById('flashcard').classList.remove('hidden');
+            document.getElementById('controlsContainer').classList.remove('hidden');
+            document.getElementById('progressContainer').classList.remove('hidden');
+            
+            const compScreen = document.getElementById('completionScreen');
+            compScreen.classList.add('hidden');
+            compScreen.classList.remove('flex');
+            
+            renderCard(true);
+        }
+
+        /**
+         * 處理 SRS 點擊事件
+         */
+        function handleSRS(type) {
+            if (queue.length === 0) return;
+            stats[type]++;
+            const card = queue.shift();
+            
+            if (type === 'again') {
+                queue.splice(1, 0, card);
+            } else if (type === 'hard') {
+                queue.splice(Math.floor(queue.length / 2), 0, card);
+            } else if (type === 'good') {
+                queue.push(card);
+            } else if (type === 'easy') {
+                // 不放回佇列
+            }
+            
+            isFront = true;
+            renderCard(true);
+        }
+
+        /**
+         * 更新統計數字 UI
+         */
+        function updateStatsUI() {
+            document.getElementById('statAgain').textContent = stats.again;
+            document.getElementById('statHard').textContent = stats.hard;
+            document.getElementById('statGood').textContent = stats.good;
+            document.getElementById('statEasy').textContent = stats.easy;
+        }
+
+        /**
+         * 更新進度條與畫面卡片內容
+         */
+        function renderCard(autoSpeak = true) {
+            updateStatsUI();
+
+            if (queue.length === 0) {
+                document.getElementById('flashcard').classList.add('hidden');
+                document.getElementById('controlsContainer').classList.add('hidden');
+                document.getElementById('progressContainer').classList.add('hidden');
+                
+                const compScreen = document.getElementById('completionScreen');
+                compScreen.classList.remove('hidden');
+                compScreen.classList.add('flex');
+                
+                document.getElementById('finalAgain').textContent = stats.again;
+                document.getElementById('finalHard').textContent = stats.hard;
+                document.getElementById('finalGood').textContent = stats.good;
+                document.getElementById('finalEasy').textContent = stats.easy;
+                return;
+            }
+
+            const card = queue[0];
+            const remaining = queue.length;
+            const completed = totalCards - remaining;
+            const percent = totalCards === 0 ? 0 : Math.round((completed / totalCards) * 100);
+
+            progressCountEl.innerHTML = `<i class="ph-fill ph-stack text-indigo-500 text-sm"></i><span>剩餘: ${remaining} / ${totalCards}</span>`;
+            progressPercentEl.textContent = `${percent}%`;
+            progressBarEl.style.width = `${percent}%`;
+
+            frontWordTextEl.textContent = card.front;
+
+            cardBackEl.innerHTML = '';
+            
+            card.backLines.forEach((line) => {
+                let styleInfo = {};
+                let isExample = false;
+                
+                // 根據該行文字包含的關鍵字，套用對應的截圖樣式
+                if (line.includes('例句')) {
+                    isExample = true;
+                    styleInfo = {
+                        icon: 'ph-fill ph-chat-centered-text',
+                        colorClass: 'text-sky-500',
+                        textClass: 'text-slate-800 font-medium text-sm sm:text-base',
+                        bgClass: 'bg-sky-50/60 border-sky-100/50'
+                    };
+                } else if (line.includes('搭配')) {
+                    styleInfo = {
+                        icon: 'ph-fill ph-puzzle-piece',
+                        colorClass: 'text-emerald-500',
+                        textClass: 'text-slate-700 text-sm sm:text-base',
+                        bgClass: 'bg-emerald-50/60 border-emerald-100/50'
+                    };
+                } else if (line.includes('變化') || line.includes('三態')) {
+                    styleInfo = {
+                        icon: 'ph-git-branch',
+                        colorClass: 'text-amber-500',
+                        textClass: 'text-slate-700 text-sm sm:text-base',
+                        bgClass: 'bg-amber-50/60 border-amber-100/50'
+                    };
+                } else {
+                    // 預設主解釋/詞性 (紫色)
+                    styleInfo = {
+                        icon: 'ph-fill ph-tag',
+                        colorClass: 'text-indigo-500',
+                        textClass: 'font-bold text-base sm:text-lg text-slate-800',
+                        bgClass: 'bg-indigo-50/60 border-indigo-100/50'
+                    };
+                }
+
+                // 建立卡塊列
+                const rowDiv = document.createElement('div');
+                rowDiv.className = `flex items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl border ${styleInfo.bgClass}`;
+
+                // 左側圖示與文字區塊
+                const leftPart = document.createElement('div');
+                leftPart.className = 'flex items-center gap-3 min-w-0 flex-1';
+
+                const iconWrap = document.createElement('div');
+                iconWrap.className = `flex items-center justify-center shrink-0 ${styleInfo.colorClass}`;
+                iconWrap.innerHTML = `<i class="${styleInfo.icon} text-xl"></i>`;
+
+                const textSpan = document.createElement('div');
+                textSpan.className = `leading-relaxed break-words ${styleInfo.textClass}`;
+                textSpan.textContent = line;
+
+                leftPart.appendChild(iconWrap);
+                leftPart.appendChild(textSpan);
+                rowDiv.appendChild(leftPart);
+
+                // 如果是例句內容，在右側加入獨立的喇叭圖示按鈕
+                if (isExample) {
+                    const speakerBtn = document.createElement('button');
+                    speakerBtn.type = 'button';
+                    speakerBtn.title = '朗讀例句 (或按 Enter 鍵)';
+                    speakerBtn.className = 'w-10 h-10 rounded-xl bg-indigo-50/80 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center transition-all shadow-sm active:scale-95 shrink-0 ml-2';
+                    speakerBtn.innerHTML = '<i class="ph-fill ph-speaker-high text-xl"></i>';
+                    
+                    // 從該行獨立擷取純德文部分供朗讀
+                    const lineGerman = line.replace(/[\(（].*?[\)）]/g, '').replace(/^.*?例句[：:\s】]*/, '').trim();
+                    speakerBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        speakGerman(lineGerman, speakerBtn);
+                    });
+                    
+                    // 賦予第一句例句特定 ID，供 Enter 快捷鍵統一觸發
+                    if (!document.getElementById('backExampleSpeakerBtn')) {
+                        speakerBtn.id = 'backExampleSpeakerBtn';
+                    }
+                    rowDiv.appendChild(speakerBtn);
+                }
+
+                cardBackEl.appendChild(rowDiv);
+            });
+
+            if (isFront) {
+                cardFrontEl.classList.remove('hidden');
+                cardFrontEl.classList.add('flex');
+                cardBackEl.classList.add('hidden');
+                cardBackEl.classList.remove('flex');
+                cardSideBadgeEl.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600';
+                cardSideBadgeEl.innerHTML = '<i class="ph-fill ph-translate"></i><span>正面 · 德文單字</span>';
+                
+                flipBtn.classList.remove('hidden');
+                flipBtn.classList.add('flex');
+                srsControls.classList.add('hidden');
+                srsControls.classList.remove('flex');
+            } else {
+                cardFrontEl.classList.add('hidden');
+                cardFrontEl.classList.remove('flex');
+                cardBackEl.classList.remove('hidden');
+                cardBackEl.classList.add('flex');
+                cardSideBadgeEl.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-600';
+                cardSideBadgeEl.innerHTML = '<i class="ph-fill ph-book-open-text"></i><span>背面 · 詳細解析與例句</span>';
+                
+                flipBtn.classList.add('hidden');
+                flipBtn.classList.remove('flex');
+                srsControls.classList.remove('hidden');
+                srsControls.classList.add('flex');
+            }
+
+            if (autoSpeak) {
+                speakCurrentSide();
+            }
+        }
+
+        /**
+         * 翻轉卡片並自動朗讀該面內容
+         */
+        function flipCard() {
+            if (queue.length === 0) return;
+            isFront = !isFront;
+            renderCard(true);
+        }
+
+        // 事件綁定：正面喇叭按鈕點擊
+        frontSpeakerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (queue.length === 0) return;
+            speakGerman(queue[0].front, frontSpeakerBtn);
+        });
+
+        // 事件綁定：點擊卡片本體翻面 (限制只有在正面時可以點擊翻面)
+        flashcardEl.addEventListener('click', () => {
+            if (isFront) flipCard();
+        });
+
+        // 事件綁定：下方操作按鈕
+        flipBtn.addEventListener('click', () => flipCard());
+
+        // 事件綁定：按下 Enter 鍵朗讀單字（正面）或例句（背面）
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                speakCurrentSide();
+            }
+        });
+
+        // 事件綁定：匯入 CSV 檔案
+        csvFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const parsed = parseCSV(event.target.result);
+                if (parsed.length > 0) {
+                    originalCards = parsed;
+                    
+                    // 恢復為結算畫面預設樣式
+                    document.getElementById('completionIcon').className = 'ph-fill ph-check-circle text-5xl';
+                    document.getElementById('completionTitle').textContent = '完成練習！';
+                    document.getElementById('completionDesc').textContent = '您已經完成了本次所有的單字複習，幹得好！';
+                    document.getElementById('completionStats').classList.remove('hidden');
+                    document.getElementById('completionStats').classList.add('flex');
+                    document.getElementById('restartBtn').classList.remove('hidden');
+                    document.getElementById('restartBtn').classList.add('flex');
+                    
+                    resetSession();
+                } else {
+                    alert('匯入失敗：CSV 內容為空或格式不符。');
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+            csvFileInput.value = '';
+        });
+
+        // 啟動應用程式，設定為初始空狀態並提示匯入
+        window.addEventListener('DOMContentLoaded', () => {
+            originalCards = [];
+            queue = [];
+            totalCards = 0;
+            
+            // 隱藏學習區域，顯示提示畫面
+            document.getElementById('flashcard').classList.add('hidden');
+            document.getElementById('controlsContainer').classList.add('hidden');
+            document.getElementById('progressContainer').classList.add('hidden');
+            
+            const compScreen = document.getElementById('completionScreen');
+            compScreen.classList.remove('hidden');
+            compScreen.classList.add('flex');
+            
+            // 將結算畫面改造為「歡迎/提示匯入」畫面
+            document.getElementById('completionIcon').className = 'ph-fill ph-upload-simple text-5xl';
+            document.getElementById('completionTitle').textContent = '歡迎使用單字卡';
+            document.getElementById('completionDesc').textContent = '請點擊右上角的「匯入 CSV」按鈕，載入您的單字檔案開始練習。';
+            
+            // 隱藏無關的統計與重製按鈕
+            document.getElementById('completionStats').classList.add('hidden');
+            document.getElementById('completionStats').classList.remove('flex');
+            document.getElementById('restartBtn').classList.add('hidden');
+            document.getElementById('restartBtn').classList.remove('flex');
+        });
+    </script>
+</body>
+</html>
